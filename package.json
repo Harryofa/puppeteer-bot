@@ -1,12 +1,8 @@
 {
-  "name": "puppeteer-bot",
+  "name": "betking-bot",
   "version": "1.0.0",
-  "description": "Puppeteer automation bot",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "engines": { "node": ">=14" },
   "dependencies": {
-    "puppeteer": "^22.8.2"
+    "puppeteer": "^21.0.0"
   }
 }
