@@ -1,127 +1,154 @@
 const puppeteer = require("puppeteer");
+const http = require("http");
 
 // ================= CONFIG =================
-const FIXTURES_URL =
-  "https://m.betking.com/en-ng/virtuals/scheduled/leagues/kings-league";
-const RESULTS_URL =
-  "https://m.betking.com/virtual/league/kings-league/results";
-// =========================================
+const FIXTURES_URL = "https://m.betking.com/en-ng/virtuals/scheduled/leagues/kings-league";
+const RESULTS_URL = "https://m.betking.com/virtual/league/kings-league/results";
+const INTERVAL_MS = 170 * 1000; // 2m 50s cycle
 
-// ANSI COLORS
 const GREEN = "\x1b[32m";
 const RED = "\x1b[31m";
+const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
-console.log("🚀 BetKing Kings League DC12 Bot Started");
+const picks = {}; 
 
-// ---------- SCRAPE WEEK ----------
-async function scrapeWeek(page) {
+// ---------- HEALTH CHECK SERVER FOR RENDER ----------
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot is Active and Monitoring BetKing...\n');
+}).listen(process.env.PORT || 3000);
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// ---------- SCRAPE WEEK NUMBER ----------
+async function scrapeWeekNumber(page) {
   return await page.evaluate(() => {
-    const span = [...document.querySelectorAll("span")]
+    const span = Array.from(document.querySelectorAll("span"))
       .find(s => /week\s+\d+/i.test(s.innerText));
-    if (!span) return "?";
+    if (!span) return null;
     const m = span.innerText.match(/week\s+(\d+)/i);
-    return m ? m[1] : "?";
+    return m ? parseInt(m[1], 10) : null;
   });
 }
 
 // ---------- SCRAPE HIGHEST DC12 ----------
-async function getHighestDC12(page) {
-  return await page.evaluate(() => {
-    const week = document.querySelector("mvs-match-week");
-    if (!week) return null;
+async function scrapeHighestDC12(browser) {
+  const page = await browser.newPage();
+  try {
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36');
+    await page.goto(FIXTURES_URL, { waitUntil: "networkidle2", timeout: 60000 });
 
-    let best = null;
+    const weekNumber = await scrapeWeekNumber(page);
 
-    week.querySelectorAll('div[data-testid="match-content"]').forEach(match => {
-      const home = match.querySelector('[data-testid="match-home-team"]')?.innerText.trim();
-      const away = match.querySelector('[data-testid="away-home-team"]')?.innerText.trim();
-      const odds = match.querySelectorAll('span[data-testid="match-odd-value"]');
-
-      if (!home || !away || odds.length !== 3) return;
-
-      const dc12 = parseFloat(odds[1].innerText);
-      if (isNaN(dc12)) return;
-
-      if (!best || dc12 > best.dc12) {
-        best = { home, away, dc12 };
-      }
-    });
-
-    return best;
-  });
-}
-
-// ---------- CHECK RESULT ----------
-async function checkResult(page, pick) {
-  return await page.evaluate(pick => {
-    const rows = document.querySelectorAll(".row");
-
-    for (const row of rows) {
-      const home = row.querySelector('[data-testid="results-home-team"]')?.innerText.trim();
-      const away = row.querySelector('[data-testid="results-away-team"]')?.innerText.trim();
-
-      if (
-        (home === pick.home && away === pick.away) ||
-        (home === pick.away && away === pick.home)
-      ) {
-        const ft = row.querySelector('[data-testid="results-ft"]')?.innerText;
-        if (!ft) return null;
-
-        const m = ft.match(/(\d+)\s*-\s*(\d+)/);
-        if (!m) return null;
-
-        const hg = +m[1];
-        const ag = +m[2];
-
-        return {
-          ft,
-          outcome: hg === ag ? "LOSE" : "WIN"
-        };
-      }
+    const dcTab = await page.waitForSelector('[data-testid="double-chance-market"]', { timeout: 10000 });
+    if (dcTab) {
+      await dcTab.click();
+      await sleep(3000); 
     }
 
+    const pick = await page.evaluate(() => {
+      const matchRows = document.querySelectorAll('div[data-testid="match-content"]');
+      let best = null;
+
+      matchRows.forEach(match => {
+        const home = match.querySelector('[data-testid="match-home-team"]')?.innerText.trim();
+        const away = match.querySelector('[data-testid="match-away-team"]')?.innerText.trim();
+        const odds = match.querySelectorAll('span[data-testid="match-odd-value"]');
+
+        if (home && away && odds.length >= 2) {
+          const dc12 = parseFloat(odds[1].innerText.trim()); 
+          if (!isNaN(dc12) && (!best || dc12 > best.dc12)) {
+            best = { home, away, dc12 };
+          }
+        }
+      });
+      return best;
+    });
+
+    return pick ? { ...pick, week: weekNumber } : null;
+  } catch (e) {
+    console.log(RED + "Scrape Error: " + e.message + RESET);
     return null;
-  }, pick);
+  } finally {
+    await page.close();
+  }
 }
 
-// ---------- MAIN ----------
+// ---------- CHECK RESULTS ----------
+async function reconcileResults(browser) {
+  const page = await browser.newPage();
+  try {
+    await page.goto(RESULTS_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForSelector('[data-testid="results-home-team"]', { timeout: 15000 });
+
+    return await page.evaluate((currentPicks) => {
+      const results = [];
+      const rows = document.querySelectorAll(".mvs-results-list__item, .row");
+
+      rows.forEach(row => {
+        const home = row.querySelector('[data-testid="results-home-team"]')?.innerText.trim();
+        const away = row.querySelector('[data-testid="results-away-team"]')?.innerText.trim();
+        const ft = row.querySelector('[data-testid="results-ft"]')?.innerText.trim();
+        
+        if (!home || !away || !ft) return;
+
+        for (const [fixture, pick] of Object.entries(currentPicks)) {
+            if (pick.status !== "PENDING") continue;
+            
+            if (home === pick.home && away === pick.away) {
+                const score = ft.split('-').map(s => parseInt(s.trim()));
+                const outcome = score[0] !== score[1] ? "WIN" : "LOSE";
+                results.push({ fixture, ft, outcome });
+            }
+        }
+      });
+      return results;
+    }, picks);
+  } catch (e) {
+    return [];
+  } finally {
+    await page.close();
+  }
+}
+
+// ---------- MAIN LOOP ----------
 (async () => {
   const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
   });
 
-  const page = await browser.newPage();
+  console.log(YELLOW + "🚀 Bot started. Tracking Kings League..." + RESET);
 
-  // 1️⃣ FIXTURES
-  await page.goto(FIXTURES_URL, { waitUntil: "networkidle2" });
-  const week = await scrapeWeek(page);
-  const pick = await getHighestDC12(page);
+  while (true) {
+    try {
+      const pick = await scrapeHighestDC12(browser);
+      if (pick) {
+        const fixture = `${pick.home} vs ${pick.away}`;
+        if (!picks[fixture]) {
+          picks[fixture] = { ...pick, status: "PENDING" };
+          console.log(`🎯 [WEEK ${pick.week ?? '?'}] NEW PICK: ${fixture} | DC12 @ ${pick.dc12}`);
+        }
+      }
 
-  if (!pick) {
-    console.log("❌ No DC12 pick found");
-    await browser.close();
-    return;
+      const updates = await reconcileResults(browser);
+      updates.forEach(upd => {
+        if (picks[upd.fixture]) {
+          picks[upd.fixture].status = upd.outcome;
+          const color = upd.outcome === "WIN" ? GREEN : RED;
+          console.log(`${color}🏁 RESULT: ${upd.fixture} | Score: ${upd.ft} | ${upd.outcome}${RESET}`);
+          
+          // Optional: delete from memory after result found to save space
+          // delete picks[upd.fixture]; 
+        }
+      });
+
+    } catch (err) {
+      console.error("Loop Error:", err);
+    }
+    await sleep(INTERVAL_MS);
   }
-
-  console.log(
-    `🎯 WEEK ${week} PICK → ${pick.home} vs ${pick.away} | DC12 @ ${pick.dc12}`
-  );
-
-  // 2️⃣ RESULTS
-  await page.goto(RESULTS_URL, { waitUntil: "domcontentloaded" });
-  const result = await checkResult(page, pick);
-
-  if (!result) {
-    console.log("⏳ Result not yet available");
-  } else {
-    const color = result.outcome === "WIN" ? GREEN : RED;
-    console.log(
-      `${color}🏁 RESULT → ${pick.home} vs ${pick.away} | ${result.ft} → ${result.outcome}${RESET}`
-    );
-  }
-
-  await browser.close();
-  console.log("✅ Bot finished successfully");
 })();
