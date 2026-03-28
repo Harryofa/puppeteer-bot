@@ -1,6 +1,6 @@
-const puppeteer = require("puppeteer-core");
+const puppeteer = require("puppeteer");
 
-const URL = "https://example.com"; // 🔁 CHANGE THIS TO YOUR TARGET
+const URL = "https://example.com"; // 🔁 change later
 
 async function scrape() {
   let browser;
@@ -8,58 +8,52 @@ async function scrape() {
   try {
     console.log("🚀 Starting scrape...");
 
+    // 👇 Force Puppeteer to use installed Chrome
+    const browserFetcher = puppeteer.createBrowserFetcher();
+    const revisionInfo = await browserFetcher.download(
+      puppeteer.browserRevision
+    );
+
     browser = await puppeteer.launch({
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+      headless: "new",
+      executablePath: revisionInfo.executablePath,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--no-zygote",
-        "--single-process"
+        "--disable-gpu"
       ]
     });
 
     const page = await browser.newPage();
 
-    // Set timeouts
-    await page.setDefaultNavigationTimeout(60000);
-    await page.setDefaultTimeout(60000);
-
-    // Open site
     await page.goto(URL, {
-      waitUntil: "networkidle2"
+      waitUntil: "networkidle2",
+      timeout: 60000
     });
 
     console.log("✅ Page loaded");
 
-    // 🔥 BASIC SCRAPE (SAFE TEST)
-    const result = await page.evaluate(() => {
+    const data = await page.evaluate(() => {
       return {
         title: document.title,
-        url: window.location.href,
-        links: Array.from(document.querySelectorAll("a"))
-          .slice(0, 5)
-          .map(a => a.href)
+        url: window.location.href
       };
     });
 
-    console.log("📊 DATA:", JSON.stringify(result, null, 2));
+    console.log("📊 DATA:", data);
 
     console.log("✅ Scrape completed\n");
 
   } catch (error) {
     console.error("❌ ERROR:", error.message);
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
   }
 }
 
-// 🔁 RUN FOREVER (NO STOP)
-async function runBot() {
+// 🔁 LOOP FOREVER
+(async () => {
   console.log("🤖 BOT STARTED...\n");
 
   while (true) {
@@ -67,8 +61,6 @@ async function runBot() {
 
     console.log("⏳ Waiting 180 seconds...\n");
 
-    await new Promise(resolve => setTimeout(resolve, 180000)); // 3 mins
+    await new Promise(resolve => setTimeout(resolve, 180000));
   }
-}
-
-runBot();
+})();
