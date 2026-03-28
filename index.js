@@ -10,70 +10,62 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const CSV_PATH = path.join('/tmp', `betking_virtuals_${Date.now()}.csv`);
 
-app.get('/', (req, res) => {
-  res.send(`
-    <h1>BetKing Virtual Scraper (Render)</h1>
-    <p><a href="/scrape">🚀 Start scraping BetKing Virtuals</a></p>
-    <p><a href="/download">📥 Download latest CSV</a></p>
-  `);
-});
+app.get('/', (req, res) => res.send(`
+  <h1>BetKing Virtual Scraper</h1>
+  <p><a href="/scrape">Start Scraping BetKing Virtuals</a></p>
+  <p><a href="/download">Download CSV</a></p>
+`));
 
 app.get('/scrape', async (req, res) => {
   try {
-    console.log('Starting BetKing Virtual scrape...');
+    console.log('Launching browser for BetKing...');
     const browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--single-process'],
+      timeout: 60000
     });
 
     const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36');
+    await page.setUserAgent('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36');
+    
+    await page.goto('https://m.betking.com/virtual', { waitUntil: 'networkidle2', timeout: 120000 });
+    await page.waitForTimeout(8000);
 
-    // Main virtuals page (mobile version works better for scraping)
-    await page.goto('https://m.betking.com/virtual', { waitUntil: 'networkidle2', timeout: 90000 });
-
-    // Try to go to a specific instant league (e.g. Kings InstaLeague) — adjust if needed
-    // You may need to click "Virtual" tab or select a league first
-    await page.waitForTimeout(5000);
-
-    // Look for "Results", "History", "Recent Bets" or "Past Matches" button
-    const historySelectors = ['text=Results', 'text=History', 'text=Recent', 'text=Past', '[data-testid*="result"]'];
-    for (const sel of historySelectors) {
+    // Try common history/results buttons
+    const historyTexts = ['Results', 'History', 'Recent', 'Past Matches', 'Last Results'];
+    for (const text of historyTexts) {
       try {
-        await page.click(sel);
-        await page.waitForTimeout(4000);
+        await page.click(`text=${text}`);
+        await page.waitForTimeout(5000);
         break;
-      } catch (e) {}
+      } catch (e) { /* continue */ }
     }
 
     let all = [], stuck = 0;
     while (stuck < 10) {
       const batch = await page.evaluate(() => 
-        Array.from(document.querySelectorAll('.match-item, .event, .fixture, .history-row, [class*="match"], [class*="result"]')).map(el => {
-          const scoreEl = el.querySelector('.score, .result, .goals, .ft') || el.querySelector('span[class*="score"]');
-          const scoreText = scoreEl ? scoreEl.innerText.trim() : '';
-          if (!scoreText || !scoreText.includes('-')) return null;
-
+        Array.from(document.querySelectorAll('.match, .event, .fixture, .row, [class*="match"], [class*="result"]')).map(el => {
+          const scoreText = el.querySelector('.score, .result, .goals, .ft')?.innerText.trim() || '';
+          if (!scoreText.includes('-')) return null;
           const [h, a] = scoreText.split('-').map(x => parseInt(x.trim()));
           if (isNaN(h) || isNaN(a)) return null;
-
           return {
-            league: el.querySelector('.league, .competition, .title')?.innerText.trim() || 'BetKing Virtual',
-            round: el.querySelector('.round, .week, .fixture-info')?.innerText.trim() || '',
-            home: el.querySelector('.home, .team-home, .home-team')?.innerText.trim() || '',
-            away: el.querySelector('.away, .team-away, .away-team')?.innerText.trim() || '',
+            league: el.querySelector('.league, .competition, .title, .name')?.innerText.trim() || 'BetKing Virtual',
+            round: el.querySelector('.round, .week, .time')?.innerText.trim() || '',
+            home: el.querySelector('.home, .team1, .home-team')?.innerText.trim() || '',
+            away: el.querySelector('.away, .team2, .away-team')?.innerText.trim() || '',
             h, a
           };
         }).filter(Boolean)
       );
 
       all = [...all, ...batch];
-      console.log(`Collected: ${all.length} BetKing virtual matches`);
+      console.log(`Collected ${all.length} matches so far`);
 
-      const oldHeight = await page.evaluate('document.body.scrollHeight');
+      const old = await page.evaluate('document.body.scrollHeight');
       await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-      await page.waitForTimeout(4000);
-      if (oldHeight === await page.evaluate('document.body.scrollHeight')) stuck++;
+      await page.waitForTimeout(4500);
+      if (old === await page.evaluate('document.body.scrollHeight')) stuck++;
       else stuck = 0;
     }
 
@@ -83,23 +75,19 @@ app.get('/scrape', async (req, res) => {
       unique.map(m => `${m.league},${m.round},"${m.home}","${m.away}",${m.h},${m.a}`).join('\n');
 
     fs.writeFileSync(CSV_PATH, csv);
+    console.log(`✅ Saved ${unique.length} unique BetKing matches`);
 
-    console.log(`✅ SUCCESS! ${unique.length} BetKing virtual matches saved`);
     await browser.close();
-
-    res.send(`<h2>✅ Scraped ${unique.length} BetKing virtual matches!</h2><p><a href="/download">Download CSV</a></p>`);
+    res.send(`<h2>Success! ${unique.length} matches scraped.</h2><a href="/download">Download CSV</a>`);
   } catch (err) {
-    console.error('Scrape error:', err);
-    res.status(500).send('Error during scrape: ' + err.message);
+    console.error(err);
+    res.status(500).send('Scrape failed: ' + err.message);
   }
 });
 
 app.get('/download', (req, res) => {
-  if (fs.existsSync(CSV_PATH)) {
-    res.download(CSV_PATH, 'betking_virtual_history.csv');
-  } else {
-    res.send('No CSV yet — visit /scrape first');
-  }
+  if (fs.existsSync(CSV_PATH)) res.download(CSV_PATH);
+  else res.send('No CSV yet. Visit /scrape first.');
 });
 
-app.listen(PORT, () => console.log(`🚀 BetKing Virtual Scraper running on port ${PORT}`));
+app.listen(PORT, () => console.log(`BetKing scraper running on port ${PORT}`));
