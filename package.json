@@ -1,8 +1,8 @@
 {
-  "name": "betking-bot",
+  "name": "kings-league-bot",
   "version": "1.0.0",
-  "engines": { "node": ">=14" },
+  "main": "bot.js",
   "dependencies": {
-    "puppeteer": "^21.0.0"
+    "puppeteer": "^22.0.0"
   }
 }
