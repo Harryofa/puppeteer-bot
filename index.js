@@ -1,127 +1,105 @@
-const puppeteer = require("puppeteer");
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
 
-// ================= CONFIG =================
-const FIXTURES_URL =
-  "https://m.betking.com/en-ng/virtuals/scheduled/leagues/kings-league";
-const RESULTS_URL =
-  "https://m.betking.com/virtual/league/kings-league/results";
-// =========================================
+puppeteer.use(StealthPlugin());
 
-// ANSI COLORS
-const GREEN = "\x1b[32m";
-const RED = "\x1b[31m";
-const RESET = "\x1b[0m";
+const app = express();
+const PORT = process.env.PORT || 3000;
+const CSV_PATH = path.join('/tmp', `betking_virtuals_${Date.now()}.csv`);
 
-console.log("🚀 BetKing Kings League DC12 Bot Started");
+app.get('/', (req, res) => {
+  res.send(`
+    <h1>BetKing Virtual Scraper (Render)</h1>
+    <p><a href="/scrape">🚀 Start scraping BetKing Virtuals</a></p>
+    <p><a href="/download">📥 Download latest CSV</a></p>
+  `);
+});
 
-// ---------- SCRAPE WEEK ----------
-async function scrapeWeek(page) {
-  return await page.evaluate(() => {
-    const span = [...document.querySelectorAll("span")]
-      .find(s => /week\s+\d+/i.test(s.innerText));
-    if (!span) return "?";
-    const m = span.innerText.match(/week\s+(\d+)/i);
-    return m ? m[1] : "?";
-  });
-}
-
-// ---------- SCRAPE HIGHEST DC12 ----------
-async function getHighestDC12(page) {
-  return await page.evaluate(() => {
-    const week = document.querySelector("mvs-match-week");
-    if (!week) return null;
-
-    let best = null;
-
-    week.querySelectorAll('div[data-testid="match-content"]').forEach(match => {
-      const home = match.querySelector('[data-testid="match-home-team"]')?.innerText.trim();
-      const away = match.querySelector('[data-testid="away-home-team"]')?.innerText.trim();
-      const odds = match.querySelectorAll('span[data-testid="match-odd-value"]');
-
-      if (!home || !away || odds.length !== 3) return;
-
-      const dc12 = parseFloat(odds[1].innerText);
-      if (isNaN(dc12)) return;
-
-      if (!best || dc12 > best.dc12) {
-        best = { home, away, dc12 };
-      }
+app.get('/scrape', async (req, res) => {
+  try {
+    console.log('Starting BetKing Virtual scrape...');
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
     });
 
-    return best;
-  });
-}
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36');
 
-// ---------- CHECK RESULT ----------
-async function checkResult(page, pick) {
-  return await page.evaluate(pick => {
-    const rows = document.querySelectorAll(".row");
+    // Main virtuals page (mobile version works better for scraping)
+    await page.goto('https://m.betking.com/virtual', { waitUntil: 'networkidle2', timeout: 90000 });
 
-    for (const row of rows) {
-      const home = row.querySelector('[data-testid="results-home-team"]')?.innerText.trim();
-      const away = row.querySelector('[data-testid="results-away-team"]')?.innerText.trim();
+    // Try to go to a specific instant league (e.g. Kings InstaLeague) — adjust if needed
+    // You may need to click "Virtual" tab or select a league first
+    await page.waitForTimeout(5000);
 
-      if (
-        (home === pick.home && away === pick.away) ||
-        (home === pick.away && away === pick.home)
-      ) {
-        const ft = row.querySelector('[data-testid="results-ft"]')?.innerText;
-        if (!ft) return null;
-
-        const m = ft.match(/(\d+)\s*-\s*(\d+)/);
-        if (!m) return null;
-
-        const hg = +m[1];
-        const ag = +m[2];
-
-        return {
-          ft,
-          outcome: hg === ag ? "LOSE" : "WIN"
-        };
-      }
+    // Look for "Results", "History", "Recent Bets" or "Past Matches" button
+    const historySelectors = ['text=Results', 'text=History', 'text=Recent', 'text=Past', '[data-testid*="result"]'];
+    for (const sel of historySelectors) {
+      try {
+        await page.click(sel);
+        await page.waitForTimeout(4000);
+        break;
+      } catch (e) {}
     }
 
-    return null;
-  }, pick);
-}
+    let all = [], stuck = 0;
+    while (stuck < 10) {
+      const batch = await page.evaluate(() => 
+        Array.from(document.querySelectorAll('.match-item, .event, .fixture, .history-row, [class*="match"], [class*="result"]')).map(el => {
+          const scoreEl = el.querySelector('.score, .result, .goals, .ft') || el.querySelector('span[class*="score"]');
+          const scoreText = scoreEl ? scoreEl.innerText.trim() : '';
+          if (!scoreText || !scoreText.includes('-')) return null;
 
-// ---------- MAIN ----------
-(async () => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
-  });
+          const [h, a] = scoreText.split('-').map(x => parseInt(x.trim()));
+          if (isNaN(h) || isNaN(a)) return null;
 
-  const page = await browser.newPage();
+          return {
+            league: el.querySelector('.league, .competition, .title')?.innerText.trim() || 'BetKing Virtual',
+            round: el.querySelector('.round, .week, .fixture-info')?.innerText.trim() || '',
+            home: el.querySelector('.home, .team-home, .home-team')?.innerText.trim() || '',
+            away: el.querySelector('.away, .team-away, .away-team')?.innerText.trim() || '',
+            h, a
+          };
+        }).filter(Boolean)
+      );
 
-  // 1️⃣ FIXTURES
-  await page.goto(FIXTURES_URL, { waitUntil: "networkidle2" });
-  const week = await scrapeWeek(page);
-  const pick = await getHighestDC12(page);
+      all = [...all, ...batch];
+      console.log(`Collected: ${all.length} BetKing virtual matches`);
 
-  if (!pick) {
-    console.log("❌ No DC12 pick found");
+      const oldHeight = await page.evaluate('document.body.scrollHeight');
+      await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
+      await page.waitForTimeout(4000);
+      if (oldHeight === await page.evaluate('document.body.scrollHeight')) stuck++;
+      else stuck = 0;
+    }
+
+    const unique = [...new Map(all.map(m => [`${m.league}${m.round}${m.home}${m.away}`, m])).values()];
+
+    const csv = 'league,round,home_team,away_team,home_goals,away_goals\n' +
+      unique.map(m => `${m.league},${m.round},"${m.home}","${m.away}",${m.h},${m.a}`).join('\n');
+
+    fs.writeFileSync(CSV_PATH, csv);
+
+    console.log(`✅ SUCCESS! ${unique.length} BetKing virtual matches saved`);
     await browser.close();
-    return;
+
+    res.send(`<h2>✅ Scraped ${unique.length} BetKing virtual matches!</h2><p><a href="/download">Download CSV</a></p>`);
+  } catch (err) {
+    console.error('Scrape error:', err);
+    res.status(500).send('Error during scrape: ' + err.message);
   }
+});
 
-  console.log(
-    `🎯 WEEK ${week} PICK → ${pick.home} vs ${pick.away} | DC12 @ ${pick.dc12}`
-  );
-
-  // 2️⃣ RESULTS
-  await page.goto(RESULTS_URL, { waitUntil: "domcontentloaded" });
-  const result = await checkResult(page, pick);
-
-  if (!result) {
-    console.log("⏳ Result not yet available");
+app.get('/download', (req, res) => {
+  if (fs.existsSync(CSV_PATH)) {
+    res.download(CSV_PATH, 'betking_virtual_history.csv');
   } else {
-    const color = result.outcome === "WIN" ? GREEN : RED;
-    console.log(
-      `${color}🏁 RESULT → ${pick.home} vs ${pick.away} | ${result.ft} → ${result.outcome}${RESET}`
-    );
+    res.send('No CSV yet — visit /scrape first');
   }
+});
 
-  await browser.close();
-  console.log("✅ Bot finished successfully");
-})();
+app.listen(PORT, () => console.log(`🚀 BetKing Virtual Scraper running on port ${PORT}`));
