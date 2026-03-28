@@ -1,66 +1,40 @@
-const puppeteer = require("puppeteer");
-
-const URL = "https://example.com"; // 🔁 change later
+const puppeteer = require('puppeteer');
 
 async function scrape() {
-  let browser;
-
   try {
     console.log("🚀 Starting scrape...");
 
-    // 👇 Force Puppeteer to use installed Chrome
-    const browserFetcher = puppeteer.createBrowserFetcher();
-    const revisionInfo = await browserFetcher.download(
-      puppeteer.browserRevision
-    );
-
-    browser = await puppeteer.launch({
-      headless: "new",
-      executablePath: revisionInfo.executablePath,
+    const browser = await puppeteer.launch({
+      headless: true,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu"
+        "--disable-dev-shm-usage"
       ]
     });
 
     const page = await browser.newPage();
 
-    await page.goto(URL, {
-      waitUntil: "networkidle2",
+    await page.goto('https://example.com', {
+      waitUntil: 'networkidle2',
       timeout: 60000
     });
 
     console.log("✅ Page loaded");
 
-    const data = await page.evaluate(() => {
-      return {
-        title: document.title,
-        url: window.location.href
-      };
-    });
+    const title = await page.title();
+    console.log("📄 Title:", title);
 
-    console.log("📊 DATA:", data);
-
-    console.log("✅ Scrape completed\n");
+    await browser.close();
+    console.log("✅ Done");
 
   } catch (error) {
-    console.error("❌ ERROR:", error.message);
-  } finally {
-    if (browser) await browser.close();
+    console.error("❌ SCRAPE ERROR:", error.message);
   }
 }
 
-// 🔁 LOOP FOREVER
-(async () => {
-  console.log("🤖 BOT STARTED...\n");
+// Run every 3 minutes
+setInterval(scrape, 180000);
 
-  while (true) {
-    await scrape();
-
-    console.log("⏳ Waiting 180 seconds...\n");
-
-    await new Promise(resolve => setTimeout(resolve, 180000));
-  }
-})();
+// Run immediately
+scrape();
