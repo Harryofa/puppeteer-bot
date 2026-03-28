@@ -1,2 +1,11 @@
-npm uninstall puppeteer
-npm install puppeteer-core
+{
+  "name": "puppeteer-bot",
+  "version": "1.0.0",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "^22.0.0"
+  }
+}
