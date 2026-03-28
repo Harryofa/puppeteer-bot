@@ -1,6 +1,6 @@
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
 
-const URL = "https://example.com"; // 🔁 CHANGE THIS TO YOUR TARGET SITE
+const URL = "https://example.com"; // 🔁 CHANGE THIS TO YOUR TARGET
 
 async function scrape() {
   let browser;
@@ -9,8 +9,8 @@ async function scrape() {
     console.log("🚀 Starting scrape...");
 
     browser = await puppeteer.launch({
-      headless: "new",
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -23,29 +23,34 @@ async function scrape() {
 
     const page = await browser.newPage();
 
-    // Set timeout
+    // Set timeouts
     await page.setDefaultNavigationTimeout(60000);
+    await page.setDefaultTimeout(60000);
 
+    // Open site
     await page.goto(URL, {
       waitUntil: "networkidle2"
     });
 
     console.log("✅ Page loaded");
 
-    // ✅ Example scraping (SAFE TEST)
-    const data = await page.evaluate(() => {
+    // 🔥 BASIC SCRAPE (SAFE TEST)
+    const result = await page.evaluate(() => {
       return {
         title: document.title,
-        url: window.location.href
+        url: window.location.href,
+        links: Array.from(document.querySelectorAll("a"))
+          .slice(0, 5)
+          .map(a => a.href)
       };
     });
 
-    console.log("📊 SCRAPED DATA:", data);
+    console.log("📊 DATA:", JSON.stringify(result, null, 2));
 
     console.log("✅ Scrape completed\n");
 
   } catch (error) {
-    console.error("❌ SCRAPE ERROR:", error.message);
+    console.error("❌ ERROR:", error.message);
   } finally {
     if (browser) {
       await browser.close();
@@ -53,17 +58,17 @@ async function scrape() {
   }
 }
 
-// 🔁 RUN CONTINUOUSLY
-async function startBot() {
-  console.log("🤖 Bot started...\n");
+// 🔁 RUN FOREVER (NO STOP)
+async function runBot() {
+  console.log("🤖 BOT STARTED...\n");
 
   while (true) {
     await scrape();
 
     console.log("⏳ Waiting 180 seconds...\n");
 
-    await new Promise(resolve => setTimeout(resolve, 180000)); // 3 minutes
+    await new Promise(resolve => setTimeout(resolve, 180000)); // 3 mins
   }
 }
 
-startBot();
+runBot();
