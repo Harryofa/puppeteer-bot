@@ -1,11 +1,15 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require("puppeteer");
+
+const URL = "https://example.com"; // 🔁 change later
 
 async function scrape() {
+  let browser;
+
   try {
     console.log("🚀 Starting scrape...");
 
-    const browser = await puppeteer.launch({
-      headless: true,
+    browser = await puppeteer.launch({
+      headless: "new",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -15,8 +19,8 @@ async function scrape() {
 
     const page = await browser.newPage();
 
-    await page.goto('https://example.com', {
-      waitUntil: 'networkidle2',
+    await page.goto(URL, {
+      waitUntil: "networkidle2",
       timeout: 60000
     });
 
@@ -26,15 +30,16 @@ async function scrape() {
     console.log("📄 Title:", title);
 
     await browser.close();
-    console.log("✅ Done");
 
-  } catch (error) {
-    console.error("❌ SCRAPE ERROR:", error.message);
+    console.log("✅ Done\n");
+
+  } catch (err) {
+    console.error("❌ ERROR:", err.message);
   }
 }
 
-// Run every 3 minutes
+// run every 3 minutes
 setInterval(scrape, 180000);
 
-// Run immediately
+// run immediately
 scrape();
