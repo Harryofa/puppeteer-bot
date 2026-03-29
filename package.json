@@ -1,15 +1,12 @@
 {
-  "name": "betking-virtual-scraper",
+  "name": "kings-bot",
   "version": "1.0.0",
-  "type": "module",
+  "main": "bot.js",
   "scripts": {
-    "start": "node index.js",
-    "build": "npm ci && npx puppeteer browsers install chrome"
+    "start": "node bot.js",
+    "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
-    "express": "^4.21.2",
-    "puppeteer": "^24.4.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer": "^22.0.0"
   }
 }
