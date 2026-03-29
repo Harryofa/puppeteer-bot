@@ -1,6 +1,6 @@
 const puppeteer = require("puppeteer");
 
-const URL = "https://example.com"; // 🔁 change later
+const URL = "https://m.betking.com/en-ng/virtuals/scheduled/leagues/kings-league";
 
 async function scrape() {
   let browser;
@@ -24,10 +24,39 @@ async function scrape() {
       timeout: 60000
     });
 
-    console.log("✅ Page loaded");
+    // ⏳ WAIT FOR MATCHES TO LOAD
+    await page.waitForSelector("body", { timeout: 60000 });
 
-    const title = await page.title();
-    console.log("📄 Title:", title);
+    // Extra delay for dynamic content
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    console.log("✅ Page fully loaded");
+
+    // 🔍 SCRAPE MATCH DATA
+    const matches = await page.evaluate(() => {
+      const data = [];
+
+      // Try multiple selectors (BetKing changes often)
+      const rows = document.querySelectorAll("div");
+
+      rows.forEach(row => {
+        const text = row.innerText;
+
+        // detect match-like rows
+        if (text && text.includes("\n") && text.length < 200) {
+          const parts = text.split("\n").map(t => t.trim()).filter(Boolean);
+
+          if (parts.length >= 3) {
+            data.push(parts);
+          }
+        }
+      });
+
+      return data.slice(0, 20); // limit noise
+    });
+
+    console.log("📊 Matches Found:", matches.length);
+    console.log(matches);
 
     await browser.close();
 
