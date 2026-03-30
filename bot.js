@@ -3,11 +3,11 @@ const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 
 puppeteer.use(StealthPlugin());
 
-// 🔥 PROXY SETTINGS
+// 🔥 YOUR PROXY DETAILS
 const PROXY_HOST = "gate.decodo.com";
-const PROXY_PORT = "10002"; // you can change
+const PROXY_PORT = "10002";
 const PROXY_USER = "spidm74g3d";
-const PROXY_PASS = "YOUR_PASSWORD_HERE";
+const PROXY_PASS = "YOUR_PASSWORD"; // paste full password
 
 async function scrape() {
   let browser;
@@ -18,7 +18,7 @@ async function scrape() {
     browser = await puppeteer.launch({
       headless: true,
       args: [
-        `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
+        `--proxy-server=http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}`,
         "--no-sandbox",
         "--disable-setuid-sandbox"
       ]
@@ -26,18 +26,9 @@ async function scrape() {
 
     const page = await browser.newPage();
 
-    // 🔐 Proxy auth
-    await page.authenticate({
-      username: PROXY_USER,
-      password: PROXY_PASS
-    });
-
-    // 🌍 Real browser identity
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
     );
-
-    await page.setViewport({ width: 1366, height: 768 });
 
     console.log("🌐 Opening BetKing...");
 
@@ -46,23 +37,21 @@ async function scrape() {
       { waitUntil: "domcontentloaded", timeout: 60000 }
     );
 
-    // ⏳ FIXED WAIT (NO ERROR)
     console.log("⏳ Waiting for Cloudflare...");
     await new Promise(resolve => setTimeout(resolve, 20000));
 
     const title = await page.title();
     console.log("📄 Title:", title);
 
-    if (title.toLowerCase().includes("just a moment")) {
+    const body = await page.evaluate(() => document.body.innerText);
+
+    if (body.includes("This page isn’t working") || body.includes("HTTP ERROR 407")) {
+      console.log("❌ Proxy authentication failed");
+    } else if (title.toLowerCase().includes("just a moment")) {
       console.log("❌ Still blocked by Cloudflare");
     } else {
-      console.log("✅ SUCCESS!");
-
-      const data = await page.evaluate(() => {
-        return document.body.innerText.slice(0, 500);
-      });
-
-      console.log("📊 Data:", data);
+      console.log("✅ FULL SUCCESS!");
+      console.log("📊 Data:", body.slice(0, 500));
     }
 
     await browser.close();
@@ -73,8 +62,5 @@ async function scrape() {
   }
 }
 
-// 🚀 run
 scrape();
-
-// 🔁 repeat every 3 minutes
 setInterval(scrape, 180000);
