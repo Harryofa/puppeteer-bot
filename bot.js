@@ -3,11 +3,11 @@ const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 
 puppeteer.use(StealthPlugin());
 
-// 🔥 YOUR PROXY DETAILS
+// 🔥 PROXY DETAILS
 const PROXY_HOST = "gate.decodo.com";
 const PROXY_PORT = "10002";
 const PROXY_USER = "spidm74g3d";
-const PROXY_PASS = "YOUR_PASSWORD"; // paste full password
+const PROXY_PASS = "YOUR_FULL_PASSWORD"; // VERY IMPORTANT
 
 async function scrape() {
   let browser;
@@ -18,13 +18,19 @@ async function scrape() {
     browser = await puppeteer.launch({
       headless: true,
       args: [
-        `--proxy-server=http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}`,
+        `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
         "--no-sandbox",
         "--disable-setuid-sandbox"
       ]
     });
 
     const page = await browser.newPage();
+
+    // ✅ AUTH FIX (MUST BE HERE)
+    await page.authenticate({
+      username: PROXY_USER,
+      password: PROXY_PASS
+    });
 
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
@@ -38,19 +44,20 @@ async function scrape() {
     );
 
     console.log("⏳ Waiting for Cloudflare...");
-    await new Promise(resolve => setTimeout(resolve, 20000));
+    await new Promise(resolve => setTimeout(resolve, 25000));
 
     const title = await page.title();
-    console.log("📄 Title:", title);
-
     const body = await page.evaluate(() => document.body.innerText);
 
-    if (body.includes("This page isn’t working") || body.includes("HTTP ERROR 407")) {
-      console.log("❌ Proxy authentication failed");
+    console.log("📄 Title:", title);
+
+    // 🔍 DEBUG CHECKS
+    if (body.includes("HTTP ERROR 407")) {
+      console.log("❌ PROXY AUTH FAILED");
     } else if (title.toLowerCase().includes("just a moment")) {
-      console.log("❌ Still blocked by Cloudflare");
+      console.log("❌ BLOCKED BY CLOUDFLARE");
     } else {
-      console.log("✅ FULL SUCCESS!");
+      console.log("✅ SUCCESS!");
       console.log("📊 Data:", body.slice(0, 500));
     }
 
