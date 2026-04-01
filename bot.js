@@ -1,66 +1,119 @@
 const puppeteer = require("puppeteer");
 
-(async () => {
-  try {
-    const browser = await puppeteer.launch({
-      headless: false, // IMPORTANT (Cloudflare bypass)
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--proxy-server=http://p.webshare.io:80"
-      ]
-    });
+const PROXY_HOST = "p.webshare.io";
+const PROXY_PORT = 80;
+const PROXY_USER_BASE = "docybpah-ET-GH-KE-NG";
+const PROXY_PASS = "fjfywkrds2zw";
 
-    const page = await browser.newPage();
+// how many proxies you want to rotate through
+const MAX_PROXIES = 50;
+const MAX_RETRIES = 10;
 
-    // Proxy auth
-    await page.authenticate({
-      username: "docybpah-country-ng",
-      password: "fjfywkrds2zw"
-    });
+async function runBot() {
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    const proxyIndex = Math.floor(Math.random() * MAX_PROXIES) + 1;
+    const proxyUser = `${PROXY_USER_BASE}-${proxyIndex}`;
 
-    // Real browser fingerprint
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-    );
+    console.log(`🚀 Trying proxy: ${proxyUser}`);
 
-    console.log("🌍 Opening BetKing...");
+    let browser;
 
-    await page.goto("https://m.betking.com/en-ng/", {
-      waitUntil: "networkidle2",
-      timeout: 60000
-    });
+    try {
+      browser = await puppeteer.launch({
+        headless: "new",
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
+        ],
+      });
 
-    // 🧠 WAIT for Cloudflare + JS rendering
-    console.log("⏳ Waiting for full load...");
-    await new Promise(r => setTimeout(r, 30000));
+      const page = await browser.newPage();
 
-    // 👆 simulate human behavior
-    await page.mouse.move(100, 200);
-    await page.mouse.move(200, 400);
-    await page.waitForTimeout(5000);
+      // ✅ Authenticate proxy
+      await page.authenticate({
+        username: proxyUser,
+        password: PROXY_PASS,
+      });
 
-    // scroll like human
-    await page.evaluate(() => window.scrollBy(0, 500));
-    await page.waitForTimeout(3000);
+      // ✅ Set real browser headers
+      await page.setUserAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      );
 
-    const title = await page.title();
-    const content = await page.content();
+      await page.setExtraHTTPHeaders({
+        "accept-language": "en-US,en;q=0.9",
+      });
 
-    console.log("📄 Title:", title);
+      // =========================
+      // 🌍 STEP 1: CHECK IP LOCATION
+      // =========================
+      console.log("🌍 Checking IP...");
 
-    // Check if blocked
-    if (content.includes("Access Restricted")) {
-      console.log("❌ STILL BLOCKED (bad proxy)");
-    } else if (content.includes("Just a moment")) {
-      console.log("⚠️ Cloudflare still active");
-    } else {
-      console.log("✅ SUCCESS - Real page loaded");
+      await page.goto("https://ipinfo.io/json", {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      });
+
+      const ipData = await page.evaluate(() => {
+        return JSON.parse(document.body.innerText);
+      });
+
+      console.log("🌍 IP INFO:", ipData);
+
+      if (!["NG", "GH"].includes(ipData.country)) {
+        console.log("❌ Wrong country, rotating...");
+        await browser.close();
+        continue;
+      }
+
+      console.log("✅ Good location:", ipData.country);
+
+      // =========================
+      // 🎯 STEP 2: OPEN BETKING
+      // =========================
+      console.log("🌐 Opening BetKing...");
+
+      await page.goto("https://m.betking.com/en-ng/", {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      });
+
+      const title = await page.title();
+      console.log("📄 Title:", title);
+
+      const content = await page.content();
+
+      if (
+        content.includes("Access Restricted") ||
+        content.includes("not working")
+      ) {
+        console.log("❌ Blocked by BetKing, retrying...");
+        await browser.close();
+        continue;
+      }
+
+      console.log("🎉 SUCCESS! BetKing Loaded");
+
+      // =========================
+      // 🧠 OPTIONAL: SCRAPE DATA
+      // =========================
+      // Example:
+      // const data = await page.evaluate(() => document.body.innerText);
+      // console.log(data);
+
+      await browser.close();
+      return;
+
+    } catch (error) {
+      console.log("❌ ERROR:", error.message);
+
+      if (browser) await browser.close();
     }
-
-    await browser.close();
-
-  } catch (err) {
-    console.log("❌ ERROR:", err.message);
   }
-})();
+
+  console.log("💀 All retries failed");
+}
+
+runBot();
