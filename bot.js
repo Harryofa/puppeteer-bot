@@ -6,19 +6,17 @@ const puppeteer = require("puppeteer");
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--proxy-server=http://p.webshare.io:80"
+      "--proxy-server=http://p.webshare.io:443"
     ]
   });
 
   const page = await browser.newPage();
 
-  // 🔐 Authenticate proxy
   await page.authenticate({
     username: "docybpah-NG-1",
     password: "fjfywkrds2zw"
   });
 
-  // 🌍 Real browser headers
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
   );
@@ -30,14 +28,9 @@ const puppeteer = require("puppeteer");
     timeout: 60000
   });
 
-  console.log("⏳ Waiting for Cloudflare...");
-  await new Promise(resolve => setTimeout(resolve, 15000));
+  await new Promise(r => setTimeout(r, 15000));
 
-  const title = await page.title();
-  console.log("📄 Title:", title);
-
-  const content = await page.content();
-  console.log("📊 Data:", content.slice(0, 500));
+  console.log("📄 Title:", await page.title());
 
   await browser.close();
 })();
