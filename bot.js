@@ -1,36 +1,44 @@
 const puppeteer = require("puppeteer");
-const http = require("http");
-
-// 1. RENDER HEALTH CHECK (Keeps the service alive)
-http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end("Bot is Active");
-}).listen(process.env.PORT || 3000);
 
 (async () => {
-  // 2. LAUNCH WITH PROXY
   const browser = await puppeteer.launch({
     headless: "new",
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      `--proxy-server=${process.env.PROXY_URL}` // Uses your Webshare proxy
-    ]
+      "--proxy-server=http://p.webshare.io:9999", // 🔥 FORCE 9999
+    ],
   });
 
   const page = await browser.newPage();
 
-  // 3. PROXY AUTHENTICATION
-  if (process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
-    await page.authenticate({
-      username: process.env.PROXY_USERNAME,
-      password: process.env.PROXY_PASSWORD
-    });
-  }
+  // AUTH
+  await page.authenticate({
+    username: "docybpah-NG-GH-ET-KE",
+    password: "fjfywkrds2zw",
+  });
 
-  console.log("🚀 Bot started with Proxy. Tracking Kings League...");
-  
-  // Your scraping logic continues here...
+  // TEST IP
+  console.log("🌍 Checking IP...");
+  await page.goto("https://ipinfo.io/json");
+
+  const ip = await page.evaluate(() => document.body.innerText);
+  console.log(ip);
+
+  // OPEN SITE
+  console.log("🌐 Opening BetKing...");
+  await page.goto("https://m.betking.com/", {
+    waitUntil: "domcontentloaded",
+    timeout: 60000,
+  });
+
+  await new Promise(r => setTimeout(r, 10000));
+
+  const title = await page.title();
+  console.log("📄 Title:", title);
+
+  const body = await page.evaluate(() => document.body.innerText);
+  console.log("📊 Data:", body.slice(0, 200));
+
+  await browser.close();
 })();
