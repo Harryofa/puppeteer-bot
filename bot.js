@@ -1,44 +1,38 @@
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+
+puppeteer.use(StealthPlugin());
 
 (async () => {
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--proxy-server=http://p.webshare.io:9999", // 🔥 FORCE 9999
-    ],
-  });
+  try {
+    const browser = await puppeteer.launch({
+      headless: false, // VERY IMPORTANT
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-blink-features=AutomationControlled",
+        "--ignore-certificate-errors",
+        "--proxy-server=http://p.webshare.io:9999", // FORCE 9999
+      ],
+    });
 
-  const page = await browser.newPage();
+    const page = await browser.newPage();
 
-  // AUTH
-  await page.authenticate({
-    username: "docybpah-NG-GH-ET-KE",
-    password: "fjfywkrds2zw",
-  });
+    // ✅ PROXY AUTH
+    await page.authenticate({
+      username: "docybpah-NG-GH-ET-KE",
+      password: "fjfywkrds2zw",
+    });
 
-  // TEST IP
-  console.log("🌍 Checking IP...");
-  await page.goto("https://ipinfo.io/json");
+    // ✅ REAL USER AGENT
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
 
-  const ip = await page.evaluate(() => document.body.innerText);
-  console.log(ip);
+    // ✅ VIEWPORT (IMPORTANT)
+    await page.setViewport({ width: 1366, height: 768 });
 
-  // OPEN SITE
-  console.log("🌐 Opening BetKing...");
-  await page.goto("https://m.betking.com/", {
-    waitUntil: "domcontentloaded",
-    timeout: 60000,
-  });
-
-  await new Promise(r => setTimeout(r, 10000));
-
-  const title = await page.title();
-  console.log("📄 Title:", title);
-
-  const body = await page.evaluate(() => document.body.innerText);
-  console.log("📊 Data:", body.slice(0, 200));
-
-  await browser.close();
-})();
+    // ✅ REMOVE WEBDRIVER FLAG
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(n
