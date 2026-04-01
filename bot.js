@@ -1,74 +1,43 @@
-const puppeteer = require("puppeteer-extra");
-const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+const puppeteer = require("puppeteer");
 
-puppeteer.use(StealthPlugin());
+(async () => {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--proxy-server=http://p.webshare.io:80"
+    ]
+  });
 
-// 🔥 USE ONE PROXY (CHANGE NUMBER TO ROTATE)
-const PROXY_HOST = "p.webshare.io";
-const PROXY_PORT = "80";
-const PROXY_USER = "docybpah-1"; // change -1, -2, -3...
-const PROXY_PASS = "fjfywkrds2zw";
+  const page = await browser.newPage();
 
-async function scrape() {
-  let browser;
+  // 🔐 Authenticate proxy
+  await page.authenticate({
+    username: "docybpah-NG-1",
+    password: "fjfywkrds2zw"
+  });
 
-  try {
-    console.log(`🚀 Using proxy ${PROXY_USER}...`);
+  // 🌍 Real browser headers
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+  );
 
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        `--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`,
-        "--no-sandbox",
-        "--disable-setuid-sandbox"
-      ]
-    });
+  console.log("🌍 Opening BetKing...");
 
-    const page = await browser.newPage();
+  await page.goto("https://m.betking.com/en-ng/", {
+    waitUntil: "domcontentloaded",
+    timeout: 60000
+  });
 
-    // 🔐 AUTH
-    await page.authenticate({
-      username: PROXY_USER,
-      password: PROXY_PASS
-    });
+  console.log("⏳ Waiting for Cloudflare...");
+  await new Promise(resolve => setTimeout(resolve, 15000));
 
-    // 🌐 Real browser
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-    );
+  const title = await page.title();
+  console.log("📄 Title:", title);
 
-    console.log("🌍 Opening BetKing...");
+  const content = await page.content();
+  console.log("📊 Data:", content.slice(0, 500));
 
-    await page.goto(
-      "https://m.betking.com/en-ng/virtuals/scheduled/leagues/kings-league",
-      { waitUntil: "domcontentloaded", timeout: 60000 }
-    );
-
-    console.log("⏳ Waiting...");
-    await new Promise(resolve => setTimeout(resolve, 20000));
-
-    const title = await page.title();
-    console.log("📄 Title:", title);
-
-    if (title.toLowerCase().includes("just a moment")) {
-      console.log("❌ Blocked → change proxy number");
-    } else {
-      console.log("✅ SUCCESS!");
-
-      const data = await page.evaluate(() => {
-        return document.body.innerText.slice(0, 500);
-      });
-
-      console.log("📊 Data:", data);
-    }
-
-    await browser.close();
-
-  } catch (err) {
-    console.log("❌ ERROR:", err.message);
-    if (browser) await browser.close();
-  }
-}
-
-scrape();
-setInterval(scrape, 180000);
+  await browser.close();
+})();
