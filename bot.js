@@ -10,7 +10,7 @@ puppeteer.use(StealthPlugin());
 
   try {
     browser = await puppeteer.launch({
-      headless: "new", // safer for Render
+      headless: "new",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -23,13 +23,13 @@ puppeteer.use(StealthPlugin());
 
     const page = await browser.newPage();
 
-    // ✅ Proxy authentication
+    // 🔥 FORCE NIGERIA PROXY
     await page.authenticate({
-      username: "docybpah-NG-GH-ET-KE",
+      username: "docybpah-NG",
       password: "fjfywkrds2zw",
     });
 
-    // ✅ Real browser fingerprint
+    // 🌐 Real browser fingerprint
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
       "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -37,7 +37,6 @@ puppeteer.use(StealthPlugin());
 
     await page.setViewport({ width: 1366, height: 768 });
 
-    // ✅ Remove webdriver flag
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, "webdriver", {
         get: () => false,
@@ -45,9 +44,11 @@ puppeteer.use(StealthPlugin());
     });
 
     // =========================
-    // 🌍 CHECK IP
+    // 🌍 CHECK IP + COUNTRY
     // =========================
     console.log("🌍 Checking IP...");
+
+    let country = "unknown";
 
     try {
       await page.goto("https://ipinfo.io/json", {
@@ -55,11 +56,27 @@ puppeteer.use(StealthPlugin());
         timeout: 30000,
       });
 
-      const ip = await page.evaluate(() => document.body.innerText);
-      console.log("🌍 IP INFO:", ip);
+      const ipData = await page.evaluate(() => document.body.innerText);
+      console.log("🌍 IP INFO:", ipData);
+
+      if (ipData.includes('"country": "NG"')) {
+        country = "NG";
+      } else if (ipData.includes('"country": "GH"')) {
+        country = "GH";
+      }
+
     } catch (err) {
       console.log("⚠️ IP check failed:", err.message);
     }
+
+    // ❌ STOP if wrong country
+    if (country !== "NG") {
+      console.log("❌ WRONG COUNTRY:", country);
+      console.log("⛔ Stopping script...");
+      return;
+    }
+
+    console.log("✅ Correct country detected:", country);
 
     // =========================
     // 🌐 OPEN BETKING
@@ -71,9 +88,7 @@ puppeteer.use(StealthPlugin());
       timeout: 60000,
     });
 
-    // =========================
-    // 🤖 HUMAN BEHAVIOR
-    // =========================
+    // 🤖 simulate human
     await new Promise(r => setTimeout(r, 5000));
 
     await page.mouse.move(100, 200);
@@ -91,23 +106,18 @@ puppeteer.use(StealthPlugin());
     console.log("📄 Title:", title);
 
     const body = await page.evaluate(() => document.body.innerText);
-    console.log("📊 Data:", body.slice(0, 200));
+    console.log("📊 Data:", body.slice(0, 300));
 
     // =========================
-    // 🔍 STATUS CHECK
+    // 🔍 FINAL STATUS
     // =========================
     if (title.toLowerCase().includes("just a moment")) {
       console.log("❌ BLOCKED BY CLOUDFLARE");
+    } else if (title.toLowerCase().includes("access restricted")) {
+      console.log("❌ GEO BLOCKED");
     } else {
-      console.log("✅ SUCCESS — SITE LOADED");
+      console.log("✅ SUCCESS — FULL ACCESS GRANTED 🎉");
     }
 
   } catch (err) {
-    console.error("❌ MAIN ERROR:", err.message);
-  } finally {
-    if (browser) {
-      await browser.close();
-      console.log("🔒 Browser closed");
-    }
-  }
-})();
+    console.error("❌ MAIN ERROR:",
