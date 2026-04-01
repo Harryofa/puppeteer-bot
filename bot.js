@@ -1,36 +1,42 @@
 const puppeteer = require("puppeteer");
 
 (async () => {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--proxy-server=http://p.webshare.io:443"
-    ]
-  });
+  try {
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--proxy-server=http://p.webshare.io:80"
+      ]
+    });
 
-  const page = await browser.newPage();
+    const page = await browser.newPage();
 
-  await page.authenticate({
-    username: "docybpah-NG-1",
-    password: "fjfywkrds2zw"
-  });
+    // AUTH (ROTATING PROXY)
+    await page.authenticate({
+      username: "docybpah-country-ng",
+      password: "fjfywkrds2zw"
+    });
 
-  await page.setUserAgent(
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-  );
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+    );
 
-  console.log("🌍 Opening BetKing...");
+    console.log("🌍 Opening BetKing...");
 
-  await page.goto("https://m.betking.com/en-ng/", {
-    waitUntil: "domcontentloaded",
-    timeout: 60000
-  });
+    await page.goto("https://m.betking.com/en-ng/", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000
+    });
 
-  await new Promise(r => setTimeout(r, 15000));
+    await new Promise(r => setTimeout(r, 20000));
 
-  console.log("📄 Title:", await page.title());
+    console.log("📄 Title:", await page.title());
 
-  await browser.close();
+    await browser.close();
+
+  } catch (err) {
+    console.log("❌ ERROR:", err.message);
+  }
 })();
