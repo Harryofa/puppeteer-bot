@@ -1,105 +1,145 @@
 const puppeteer = require("puppeteer");
 
-const PROXY = "http://p.webshare.io:10000";
-const USERNAME = "docybpah-rotate";
-const PASSWORD = "fjfywkrds2zw";
+(async () => {
+  console.log("🚀 BetKing BOT (FINAL VERSION) started...");
 
-async function runBot() {
-  let browser;
+  while (true) {
+    let browser;
 
-  try {
-    console.log("🚀 Starting BetKing REAL BOT...");
+    try {
+      browser = await puppeteer.launch({
+        headless: "new",
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--proxy-server=http://p.webshare.io:80"
+        ]
+      });
 
-    browser = await puppeteer.launch({
-      headless: "new",
-      ignoreHTTPSErrors: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        `--proxy-server=${PROXY}`,
-        "--disable-dev-shm-usage",
-        "--disable-blink-features=AutomationControlled"
-      ]
-    });
+      const page = await browser.newPage();
 
-    const page = await browser.newPage();
+      // 🔐 Proxy auth
+      await page.authenticate({
+        username: "docybpah-NG-GH-ET-KE",
+        password: "fjfywkrds2zw"
+      });
 
-    // 🔐 Proxy authentication
-    await page.authenticate({
-      username: USERNAME,
-      password: PASSWORD
-    });
+      // 🧠 Make it look real
+      await page.setUserAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+      );
 
-    // 🧠 Make it look like real browser
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-    );
+      await page.setViewport({ width: 1366, height: 768 });
 
-    await page.setViewport({ width: 1366, height: 768 });
+      // 🔥 Capture API responses (IMPORTANT)
+      let apiData = [];
 
-    await page.setExtraHTTPHeaders({
-      "accept-language": "en-US,en;q=0.9"
-    });
+      page.on("response", async (response) => {
+        try {
+          const url = response.url();
 
-    console.log("🌍 Opening BetKing Virtual...");
-
-    // 🎯 Capture ONLY useful responses
-    page.on("response", async (response) => {
-      try {
-        const url = response.url();
-        const headers = response.headers();
-        const type = headers["content-type"] || "";
-
-        if (type.includes("application/json")) {
-          const data = await response.json();
-
-          // 🔥 Filter real match data
           if (
             url.includes("virtual") ||
-            JSON.stringify(data).includes("team") ||
-            JSON.stringify(data).includes("league")
+            url.includes("match") ||
+            url.includes("league")
           ) {
-            console.log("\n🔥 MATCH DATA FOUND:");
-            console.log("URL:", url);
-            console.log(JSON.stringify(data).slice(0, 500));
+            const text = await response.text();
+            if (text.length > 50) {
+              apiData.push({ url, text });
+            }
           }
-        }
-      } catch (e) {}
-    });
+        } catch (e) {}
+      });
 
-    await page.goto("https://m.betking.com/virtual", {
-      waitUntil: "networkidle2",
-      timeout: 60000
-    });
+      console.log("🌍 Opening BetKing Virtual...");
 
-    // ⏳ wait for JS + WebSocket
-    console.log("⏳ Waiting for live data...");
-    await new Promise((r) => setTimeout(r, 25000));
+      await page.goto("https://m.betking.com/virtual", {
+        waitUntil: "networkidle2",
+        timeout: 60000
+      });
 
-    const title = await page.title();
-    console.log("📄 Title:", title);
+      // ⏳ Allow JS + API load
+      await new Promise((r) => setTimeout(r, 15000));
 
-    // 🚨 Block detection
-    if (
-      title.includes("Just a moment") ||
-      title.includes("Access Restricted")
-    ) {
-      console.log("❌ Blocked by Cloudflare");
-    } else {
-      console.log("✅ Site loaded successfully");
+      const title = await page.title();
+      console.log("Title:", title);
+
+      if (
+        title.includes("Just a moment") ||
+        title.includes("Access Restricted")
+      ) {
+        console.log("❌ Blocked (Cloudflare/Geo)");
+        await browser.close();
+        continue;
+      }
+
+      // =========================
+      // 1️⃣ TRY IFRAME EXTRACTION
+      // =========================
+      console.log("📊 Checking iframe...");
+
+      const frames = page.frames();
+      let matches = [];
+
+      for (const frame of frames) {
+        try {
+          const data = await frame.evaluate(() => {
+            let results = [];
+
+            document.querySelectorAll("*").forEach((el) => {
+              const text = el.innerText;
+
+              if (
+                text &&
+                (text.includes(" v ") || text.includes(" vs "))
+              ) {
+                results.push(text.trim());
+              }
+            });
+
+            return results;
+          });
+
+          if (data.length > 0) {
+            matches = data;
+            break;
+          }
+        } catch (e) {}
+      }
+
+      // =========================
+      // 2️⃣ FALLBACK: API DATA
+      // =========================
+      if (matches.length === 0 && apiData.length > 0) {
+        console.log("📡 Using API fallback...");
+
+        apiData.forEach((item, i) => {
+          console.log(`--- API ${i + 1} ---`);
+          console.log(item.url);
+          console.log(item.text.substring(0, 300));
+        });
+      }
+
+      // =========================
+      // RESULT
+      // =========================
+      if (matches.length > 0) {
+        console.log("🔥 MATCHES FOUND:");
+        console.log(matches.slice(0, 10));
+      } else if (apiData.length === 0) {
+        console.log("❌ No data (proxy weak or blocked)");
+      } else {
+        console.log("⚠️ Data found via API only");
+      }
+
+      await browser.close();
+
+    } catch (err) {
+      console.log("❌ ERROR:", err.message);
+      if (browser) await browser.close();
     }
 
-    await browser.close();
-
-  } catch (err) {
-    console.log("❌ ERROR:", err.message);
-    if (browser) await browser.close();
+    console.log("⏳ Waiting before next run...\n");
+    await new Promise((r) => setTimeout(r, 90000)); // 1.5 mins
   }
-}
-
-// 🔁 Continuous runner
-(async () => {
-  while (true) {
-    await runBot();
-    console.log("🔄 Restarting in 60 seconds...\n");
-    await new Promise
+})();
