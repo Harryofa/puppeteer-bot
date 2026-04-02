@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 
 (async () => {
-  console.log("🚀 Bot started...");
+  console.log("🚀 BetKing Bot started...");
 
   while (true) {
     try {
@@ -21,23 +21,9 @@ const puppeteer = require("puppeteer");
         password: "fjfywkrds2zw"
       });
 
-      console.log("🌍 Checking IP...");
+      console.log("🌍 Opening BetKing...");
 
-      try {
-        await page.goto("https://ipinfo.io/json", {
-          waitUntil: "domcontentloaded",
-          timeout: 20000
-        });
-
-        const ip = await page.evaluate(() => document.body.innerText);
-        console.log("IP:", ip);
-      } catch (e) {
-        console.log("⚠️ IP check failed");
-      }
-
-      console.log("🌐 Opening BetKing...");
-
-      await page.goto("https://m.betking.com/", {
+      await page.goto("https://m.betking.com/virtual", {
         waitUntil: "domcontentloaded",
         timeout: 30000
       });
@@ -47,13 +33,34 @@ const puppeteer = require("puppeteer");
       const title = await page.title();
       console.log("Title:", title);
 
-      if (title.includes("Just a moment")) {
-        console.log("❌ Cloudflare blocking");
-      } else if (title.includes("Access Restricted")) {
-        console.log("❌ Geo blocked");
-      } else {
-        console.log("✅ SUCCESS - Site Loaded");
+      if (!title.includes("BetKing")) {
+        console.log("❌ Failed to load properly");
+        await browser.close();
+        continue;
       }
+
+      console.log("📊 Extracting matches...");
+
+      const data = await page.evaluate(() => {
+        let matches = [];
+
+        document.querySelectorAll("div").forEach(el => {
+          const text = el.innerText;
+
+          if (
+            text &&
+            text.includes("vs") &&
+            text.length < 100
+          ) {
+            matches.push(text);
+          }
+        });
+
+        return matches.slice(0, 10);
+      });
+
+      console.log("🔥 MATCHES:");
+      console.log(data);
 
       await browser.close();
 
@@ -61,7 +68,7 @@ const puppeteer = require("puppeteer");
       console.log("❌ ERROR:", err.message);
     }
 
-    console.log("⏳ Waiting before retry...");
-    await new Promise(r => setTimeout(r, 60000)); // 1 min loop
+    console.log("⏳ Waiting before next run...");
+    await new Promise(r => setTimeout(r, 60000));
   }
 })();
