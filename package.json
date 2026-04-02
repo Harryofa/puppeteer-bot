@@ -1,7 +1,15 @@
 {
-  "dependencies": {
-    "puppeteer": "^22.0.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
-  }
+  "name": "betking-stealth-bot",
+  "version": "1.0.0",
+  "description": "Improved Puppeteer bot for BetKing with Cloudflare bypass",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+    "dependencies": {
+        "puppeteer": "^24.40.0",
+        "puppeteer-extra": "^3.3.6",
+        "puppeteer-extra-plugin-stealth": "^2.11.2",
+        "puppeteer-extra-plugin-adblocker": "^2.13.6"
+    }
 }
