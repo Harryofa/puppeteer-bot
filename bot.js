@@ -14,14 +14,14 @@ const CONFIG = {
     username: "docybpah-NG-GH-ET-KE",
     password: "fjfywkrds2zw"
   },
-  USE_PROXY: false, // Set to true if you want to use the proxy
-  WAIT_BEFORE_CHECK: 15000,
-  WAIT_FOR_DATA: 30000,
+  USE_PROXY: true, 
+  WAIT_BEFORE_CHECK: 25000, 
+  WAIT_FOR_DATA: 60000, 
   CYCLE_DELAY: 60000
 };
 
 (async () => {
-  console.log("🚀 BetKing PRODUCTION DATA BOT started...");
+  console.log("🚀 BetKing ULTIMATE STEALTH BOT started...");
 
   while (true) {
     let browser;
@@ -31,8 +31,10 @@ const CONFIG = {
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-blink-features=AutomationControlled",
-        "--disable-features=IsolateOrigins,site-per-process",
-        "--window-size=1920,1080"
+        "--use-gl=desktop",
+        "--disable-infobars",
+        "--window-size=1920,1080",
+        "--lang=en-US,en;q=0.9"
       ];
 
       if (CONFIG.USE_PROXY) {
@@ -40,74 +42,58 @@ const CONFIG = {
       }
 
       browser = await puppeteer.launch({
-        headless: "new",
-        args: launchArgs
+        headless: "new", // Render requires headless: "new" or true
+        args: launchArgs,
+        defaultViewport: null
       });
 
       const page = await browser.newPage();
-      await page.setViewport({ width: 1920, height: 1080 });
+      
+      // Override webdriver property to be even more stealthy
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      });
 
       if (CONFIG.USE_PROXY) {
         await page.authenticate(CONFIG.PROXY_AUTH);
       }
 
-      // Set a realistic User-Agent
+      // Use a very specific, modern User-Agent
       await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
       );
 
-      // Add extra headers
-      await page.setExtraHTTPHeaders({
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      });
-
-      console.log(`🌍 Opening ${CONFIG.TARGET_URL}...`);
+      console.log(`🌍 Opening ${CONFIG.TARGET_URL} with Ultimate Stealth...`);
 
       // 🔥 CAPTURE ONLY JSON
       page.on("response", async (response) => {
         try {
-          const headers = response.headers();
-          const contentType = headers["content-type"] || "";
-
+          const contentType = response.headers()["content-type"] || "";
           if (contentType.includes("application/json")) {
             const url = response.url();
             const data = await response.json();
             const dataStr = JSON.stringify(data);
 
-            // Filter for relevant data
-            const isRelevant = 
-              url.includes("virtual") || 
-              dataStr.includes("team") || 
-              dataStr.includes("league") || 
-              dataStr.includes("match") ||
-              dataStr.includes("odds");
-
-            if (isRelevant) {
-              console.log(`\n🔥 MATCH DATA FOUND: ${new Date().toLocaleTimeString()}`);
+            if (url.includes("virtual") || dataStr.includes("team") || dataStr.includes("match")) {
+              console.log(`\n🔥 DATA FOUND: ${new Date().toLocaleTimeString()}`);
               console.log("URL:", url);
-              // Print a snippet of the data
-              console.log(dataStr.substring(0, 500) + "...");
+              console.log(dataStr.substring(0, 300) + "...");
             }
           }
-        } catch (e) {
-          // Ignore processing errors
-        }
+        } catch (e) {}
       });
 
-      // Handle page errors
-      page.on('error', err => console.log('❌ PAGE ERROR:', err.message));
-      page.on('pageerror', err => console.log('❌ PAGE JS ERROR:', err.message));
-
-      // Navigate to the target page
+      // Navigate with a longer timeout and specific wait condition
       await page.goto(CONFIG.TARGET_URL, {
         waitUntil: "networkidle2",
-        timeout: 90000
+        timeout: 120000
       });
 
-      // Human-like delay
+      // Human-like scroll to trigger lazy loading and bypass simple bot checks
+      await page.evaluate(() => window.scrollBy(0, 500));
+      await new Promise(r => setTimeout(r, 2000));
+      await page.evaluate(() => window.scrollBy(0, -200));
+
       await new Promise((r) => setTimeout(r, CONFIG.WAIT_BEFORE_CHECK));
 
       const title = await page.title();
@@ -115,25 +101,21 @@ const CONFIG = {
       
       console.log("Page Title:", title);
 
-      // Refined check for Cloudflare or access restriction
-      const isBlocked = 
-        title.includes("Just a moment") || 
-        title.includes("Access Restricted") ||
-        content.toLowerCase().includes("cloudflare") ||
-        content.toLowerCase().includes("cf-challenge") ||
-        content.toLowerCase().includes("ddos-guard");
+      const isBlocked = title.includes("Just a moment") || content.toLowerCase().includes("cloudflare");
 
       if (isBlocked && !content.toLowerCase().includes("virtual football")) {
-        console.log("❌ Blocked by Cloudflare or Access Restriction.");
+        console.log("❌ Still Blocked. Cloudflare is tough today.");
+        // Take a screenshot if possible for debugging on Render (saves to disk)
+        try { await page.screenshot({ path: 'blocked.png' }); } catch(e) {}
       } else {
-        console.log("✅ Site loaded successfully! Monitoring data...");
+        console.log("✅ SUCCESS! Site loaded. Monitoring for 60s...");
         await new Promise((r) => setTimeout(r, CONFIG.WAIT_FOR_DATA));
       }
 
       await browser.close();
 
     } catch (err) {
-      console.log("❌ GLOBAL ERROR:", err.message);
+      console.log("❌ ERROR:", err.message);
       if (browser) await browser.close();
     }
 
