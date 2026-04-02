@@ -4,8 +4,10 @@ const puppeteer = require("puppeteer");
   console.log("🚀 BetKing Bot started...");
 
   while (true) {
+    let browser;
+
     try {
-      const browser = await puppeteer.launch({
+      browser = await puppeteer.launch({
         headless: "new",
         args: [
           "--no-sandbox",
@@ -21,20 +23,32 @@ const puppeteer = require("puppeteer");
         password: "fjfywkrds2zw"
       });
 
-      console.log("🌍 Opening BetKing...");
+      // 🧠 Make browser look real
+      await page.setUserAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+      );
+
+      await page.setViewport({ width: 1366, height: 768 });
+
+      console.log("🌍 Opening BetKing Virtual...");
 
       await page.goto("https://m.betking.com/virtual", {
-        waitUntil: "domcontentloaded",
-        timeout: 30000
+        waitUntil: "networkidle2",
+        timeout: 60000
       });
 
-      await new Promise(r => setTimeout(r, 8000));
+      // ⏳ Extra wait for JS rendering
+      await new Promise(r => setTimeout(r, 12000));
 
       const title = await page.title();
       console.log("Title:", title);
 
-      if (!title.includes("BetKing")) {
-        console.log("❌ Failed to load properly");
+      // 🚨 Better validation
+      if (
+        title.includes("Just a moment") ||
+        title.includes("Access Restricted")
+      ) {
+        console.log("❌ Blocked by Cloudflare / Geo");
         await browser.close();
         continue;
       }
@@ -42,33 +56,39 @@ const puppeteer = require("puppeteer");
       console.log("📊 Extracting matches...");
 
       const data = await page.evaluate(() => {
-        let matches = [];
+        let results = [];
 
-        document.querySelectorAll("div").forEach(el => {
+        document.querySelectorAll("*").forEach(el => {
           const text = el.innerText;
 
           if (
             text &&
             text.includes("vs") &&
-            text.length < 100
+            text.length < 80
           ) {
-            matches.push(text);
+            results.push(text);
           }
         });
 
-        return matches.slice(0, 10);
+        return [...new Set(results)].slice(0, 10);
       });
 
-      console.log("🔥 MATCHES:");
-      console.log(data);
+      if (data.length === 0) {
+        console.log("⚠️ No matches found (JS not loaded)");
+      } else {
+        console.log("🔥 MATCHES:");
+        console.log(data);
+      }
 
       await browser.close();
 
     } catch (err) {
       console.log("❌ ERROR:", err.message);
+
+      if (browser) await browser.close();
     }
 
     console.log("⏳ Waiting before next run...");
-    await new Promise(r => setTimeout(r, 60000));
+    await new Promise(r => setTimeout(r, 90000)); // 1.5 min
   }
 })();
