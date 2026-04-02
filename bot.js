@@ -6,120 +6,195 @@ const AdblockerPlugin = require("puppeteer-extra-plugin-adblocker");
 puppeteer.use(StealthPlugin());
 puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
 
-// Configuration
+// ─── Configuration ────────────────────────────────────────────────────────────
 const CONFIG = {
-  TARGET_URL: "https://m.betking.com/virtual",
-  PROXY: "http://p.webshare.io:80",
+  TARGET_URL:        "https://m.betking.com/virtual",
+  PROXY:             process.env.PROXY_URL  || "http://p.webshare.io:80",
   PROXY_AUTH: {
-    username: "docybpah-NG-GH-ET-KE",
-    password: "fjfywkrds2zw"
+    username:        process.env.PROXY_USER || "docybpah-NG-GH-ET-KE",
+    password:        process.env.PROXY_PASS || "fjfywkrds2zw"
   },
-  USE_PROXY: true, 
-  WAIT_BEFORE_CHECK: 25000, 
-  WAIT_FOR_DATA: 60000, 
-  CYCLE_DELAY: 60000
+  USE_PROXY:         process.env.USE_PROXY !== "false",   // set USE_PROXY=false in Render env to disable
+  WAIT_BEFORE_CHECK: Number(process.env.WAIT_BEFORE_CHECK) || 25000,
+  WAIT_FOR_DATA:     Number(process.env.WAIT_FOR_DATA)     || 60000,
+  CYCLE_DELAY:       Number(process.env.CYCLE_DELAY)       || 60000,
+  MAX_RETRIES:       Number(process.env.MAX_RETRIES)       || 3
 };
 
-(async () => {
-  console.log("🚀 BetKing ULTIMATE STEALTH BOT started...");
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  while (true) {
-    let browser;
+function log(emoji, ...args) {
+  console.log(`${emoji} [${new Date().toLocaleTimeString()}]`, ...args);
+}
 
+async function buildBrowser(useProxy) {
+  const args = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-blink-features=AutomationControlled",
+    "--disable-infobars",
+    "--disable-dev-shm-usage",       // important on Render (low /dev/shm)
+    "--disable-gpu",                 // Render has no GPU
+    "--window-size=1920,1080",
+    "--lang=en-US,en;q=0.9"
+  ];
+
+  if (useProxy) {
+    args.push(`--proxy-server=${CONFIG.PROXY}`);
+    log("🔌", `Proxy enabled → ${CONFIG.PROXY}`);
+  } else {
+    log("🚫", "Proxy disabled — connecting directly");
+  }
+
+  return puppeteer.launch({
+    headless: "new",
+    args,
+    defaultViewport: null
+  });
+}
+
+async function setupPage(browser, useProxy) {
+  const page = await browser.newPage();
+
+  // Extra stealth: hide webdriver flag
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => false });
+  });
+
+  if (useProxy) {
+    await page.authenticate(CONFIG.PROXY_AUTH);
+  }
+
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Chrome/122.0.0.0 Safari/537.36"
+  );
+
+  // Extra headers to look more like a real browser
+  await page.setExtraHTTPHeaders({
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+  });
+
+  return page;
+}
+
+function attachResponseListener(page) {
+  page.on("response", async (response) => {
     try {
-      const launchArgs = [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-blink-features=AutomationControlled",
-        "--use-gl=desktop",
-        "--disable-infobars",
-        "--window-size=1920,1080",
-        "--lang=en-US,en;q=0.9"
-      ];
+      const contentType = response.headers()["content-type"] || "";
+      if (!contentType.includes("application/json")) return;
 
-      if (CONFIG.USE_PROXY) {
-        launchArgs.push(`--proxy-server=${CONFIG.PROXY}`);
+      const url     = response.url();
+      const data    = await response.json();
+      const dataStr = JSON.stringify(data);
+
+      if (
+        url.includes("virtual") ||
+        dataStr.includes("team")  ||
+        dataStr.includes("match")
+      ) {
+        log("🔥", "DATA FOUND");
+        console.log("  URL    :", url);
+        console.log("  PAYLOAD:", dataStr.substring(0, 400) + "...\n");
       }
+    } catch (_) {
+      // silently ignore non-JSON or read errors
+    }
+  });
+}
 
-      browser = await puppeteer.launch({
-        headless: "new", // Render requires headless: "new" or true
-        args: launchArgs,
-        defaultViewport: null
-      });
+// ─── Single cycle ─────────────────────────────────────────────────────────────
+async function runCycle(useProxy) {
+  let browser;
 
-      const page = await browser.newPage();
-      
-      // Override webdriver property to be even more stealthy
-      await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => false });
-      });
+  try {
+    browser = await buildBrowser(useProxy);
+    const page = await setupPage(browser, useProxy);
+    attachResponseListener(page);
 
-      if (CONFIG.USE_PROXY) {
-        await page.authenticate(CONFIG.PROXY_AUTH);
-      }
+    log("🌍", `Navigating to ${CONFIG.TARGET_URL} …`);
 
-      // Use a very specific, modern User-Agent
-      await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-      );
+    await page.goto(CONFIG.TARGET_URL, {
+      waitUntil: "networkidle2",
+      timeout:   120000
+    });
 
-      console.log(`🌍 Opening ${CONFIG.TARGET_URL} with Ultimate Stealth...`);
+    // Human-like scroll to trigger lazy-loaded content
+    await page.evaluate(() => window.scrollBy(0, 500));
+    await sleep(2000);
+    await page.evaluate(() => window.scrollBy(0, -200));
 
-      // 🔥 CAPTURE ONLY JSON
-      page.on("response", async (response) => {
-        try {
-          const contentType = response.headers()["content-type"] || "";
-          if (contentType.includes("application/json")) {
-            const url = response.url();
-            const data = await response.json();
-            const dataStr = JSON.stringify(data);
+    await sleep(CONFIG.WAIT_BEFORE_CHECK);
 
-            if (url.includes("virtual") || dataStr.includes("team") || dataStr.includes("match")) {
-              console.log(`\n🔥 DATA FOUND: ${new Date().toLocaleTimeString()}`);
-              console.log("URL:", url);
-              console.log(dataStr.substring(0, 300) + "...");
-            }
-          }
-        } catch (e) {}
-      });
+    const title   = await page.title();
+    const content = await page.content();
+    log("📄", "Page title:", title);
 
-      // Navigate with a longer timeout and specific wait condition
-      await page.goto(CONFIG.TARGET_URL, {
-        waitUntil: "networkidle2",
-        timeout: 120000
-      });
+    const isCloudflareBlock =
+      title.toLowerCase().includes("just a moment") ||
+      content.toLowerCase().includes("cloudflare");
 
-      // Human-like scroll to trigger lazy loading and bypass simple bot checks
-      await page.evaluate(() => window.scrollBy(0, 500));
-      await new Promise(r => setTimeout(r, 2000));
-      await page.evaluate(() => window.scrollBy(0, -200));
+    const hasContent =
+      content.toLowerCase().includes("virtual football") ||
+      content.toLowerCase().includes("virtual");
 
-      await new Promise((r) => setTimeout(r, CONFIG.WAIT_BEFORE_CHECK));
-
-      const title = await page.title();
-      const content = await page.content();
-      
-      console.log("Page Title:", title);
-
-      const isBlocked = title.includes("Just a moment") || content.toLowerCase().includes("cloudflare");
-
-      if (isBlocked && !content.toLowerCase().includes("virtual football")) {
-        console.log("❌ Still Blocked. Cloudflare is tough today.");
-        // Take a screenshot if possible for debugging on Render (saves to disk)
-        try { await page.screenshot({ path: 'blocked.png' }); } catch(e) {}
-      } else {
-        console.log("✅ SUCCESS! Site loaded. Monitoring for 60s...");
-        await new Promise((r) => setTimeout(r, CONFIG.WAIT_FOR_DATA));
-      }
-
-      await browser.close();
-
-    } catch (err) {
-      console.log("❌ ERROR:", err.message);
-      if (browser) await browser.close();
+    if (isCloudflareBlock && !hasContent) {
+      log("❌", "Blocked by Cloudflare.");
+      try { await page.screenshot({ path: "blocked.png" }); } catch (_) {}
+      return { success: false, reason: "cloudflare" };
     }
 
-    console.log(`\n⏳ Cycle finished. Waiting ${CONFIG.CYCLE_DELAY / 1000}s...\n`);
-    await new Promise((r) => setTimeout(r, CONFIG.CYCLE_DELAY));
+    log("✅", "Site loaded! Monitoring for data …");
+    await sleep(CONFIG.WAIT_FOR_DATA);
+    return { success: true };
+
+  } catch (err) {
+    const isTunnelError = err.message.includes("ERR_TUNNEL_CONNECTION_FAILED");
+    const isProxyError  = err.message.includes("ERR_PROXY_CONNECTION_FAILED");
+
+    if (isTunnelError || isProxyError) {
+      log("⚠️", "Proxy connection failed:", err.message);
+      return { success: false, reason: "proxy_failed" };
+    }
+
+    log("❌", "Unexpected error:", err.message);
+    return { success: false, reason: "unknown", error: err.message };
+
+  } finally {
+    if (browser) {
+      try { await browser.close(); } catch (_) {}
+    }
+  }
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+(async () => {
+  log("🚀", "BetKing ULTIMATE STEALTH BOT started");
+  log("⚙️ ", `Proxy: ${CONFIG.USE_PROXY ? CONFIG.PROXY : "disabled"}`);
+
+  let consecutiveProxyFails = 0;
+
+  while (true) {
+    // If proxy keeps failing, fall back to direct connection automatically
+    const useProxy = CONFIG.USE_PROXY && consecutiveProxyFails < CONFIG.MAX_RETRIES;
+
+    if (CONFIG.USE_PROXY && consecutiveProxyFails >= CONFIG.MAX_RETRIES) {
+      log("🔄", `Proxy failed ${consecutiveProxyFails}x in a row — falling back to direct connection`);
+    }
+
+    const result = await runCycle(useProxy);
+
+    if (result.reason === "proxy_failed") {
+      consecutiveProxyFails++;
+      log("🔁", `Proxy fail count: ${consecutiveProxyFails}/${CONFIG.MAX_RETRIES}`);
+    } else {
+      consecutiveProxyFails = 0; // reset on any non-proxy result
+    }
+
+    log("⏳", `Cycle finished. Waiting ${CONFIG.CYCLE_DELAY / 1000}s …\n`);
+    await sleep(CONFIG.CYCLE_DELAY);
   }
 })();
